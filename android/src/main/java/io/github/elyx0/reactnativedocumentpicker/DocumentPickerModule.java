@@ -162,12 +162,16 @@ public class DocumentPickerModule extends ReactContextBaseJavaModule {
 				WritableArray results = Arguments.createArray();
 
 				if (uri != null) {
-					results.pushMap(getMetadata(uri, promise));
+					WritableMap map = getMetadata(uri, promise);
+					if(map == null) { return; }
+					results.pushMap(map);
 				} else if (clipData != null && clipData.getItemCount() > 0) {
 					final int length = clipData.getItemCount();
 					for (int i = 0; i < length; ++i) {
 						ClipData.Item item = clipData.getItemAt(i);
-						results.pushMap(getMetadata(item.getUri(), promise));
+						WritableMap map = getMetadata(item.getUri(), promise);
+						if(map == null) { return; }
+						results.pushMap(map);
 					}
 				} else {
 					promise.reject(E_INVALID_DATA_RETURNED, "Invalid data returned by intent");
@@ -230,6 +234,7 @@ public class DocumentPickerModule extends ReactContextBaseJavaModule {
 
 		} catch(Exception e) {
 			promise.reject(E_FAILED_TO_COPY_FILE, e.getLocalizedMessage(), e);
+			return null;
 		}
 
 		return map;
