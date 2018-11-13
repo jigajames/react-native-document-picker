@@ -45,6 +45,7 @@ public class DocumentPickerModule extends ReactContextBaseJavaModule {
 	private static final String E_UNKNOWN_ACTIVITY_RESULT = "UNKNOWN_ACTIVITY_RESULT";
 	private static final String E_INVALID_DATA_RETURNED = "INVALID_DATA_RETURNED";
 	private static final String E_UNEXPECTED_EXCEPTION = "UNEXPECTED_EXCEPTION";
+	private static final String E_FAILED_TO_COPY_FILE = "FAILED_TO_COPY_FILE";
 
 	private static final String OPTION_TYPE = "type";
 	private static final String OPTION_MULIPLE = "multiple";
@@ -161,12 +162,12 @@ public class DocumentPickerModule extends ReactContextBaseJavaModule {
 				WritableArray results = Arguments.createArray();
 
 				if (uri != null) {
-					results.pushMap(getMetadata(uri));
+					results.pushMap(getMetadata(uri, promise));
 				} else if (clipData != null && clipData.getItemCount() > 0) {
 					final int length = clipData.getItemCount();
 					for (int i = 0; i < length; ++i) {
 						ClipData.Item item = clipData.getItemAt(i);
-						results.pushMap(getMetadata(item.getUri()));
+						results.pushMap(getMetadata(item.getUri(), promise));
 					}
 				} else {
 					promise.reject(E_INVALID_DATA_RETURNED, "Invalid data returned by intent");
@@ -182,7 +183,7 @@ public class DocumentPickerModule extends ReactContextBaseJavaModule {
 		}
 	}
 
-	private WritableMap getMetadata(Uri uri) {
+	private WritableMap getMetadata(Uri uri, Promise promise) {
 		WritableMap map = Arguments.createMap();
 
 		map.putString(FIELD_URI, uri.toString());
@@ -228,7 +229,7 @@ public class DocumentPickerModule extends ReactContextBaseJavaModule {
 			map.putString("OUTPUT_PATH", output);
 
 		} catch(Exception e) {
-			e.printStackTrace();
+			promise.reject(E_FAILED_TO_COPY_FILE, e.getLocalizedMessage(), e);
 		}
 
 		return map;
