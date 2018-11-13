@@ -25,6 +25,12 @@ import com.facebook.react.bridge.ReadableMap;
 import com.facebook.react.bridge.WritableArray;
 import com.facebook.react.bridge.WritableMap;
 
+import java.io.File;
+import java.io.FileNotFoundException;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
+
 /**
  * @see <a href="https://developer.android.com/guide/topics/providers/document-provider.html">android documentation</a>
  */
@@ -70,9 +76,11 @@ public class DocumentPickerModule extends ReactContextBaseJavaModule {
 	}
 
 	private Promise promise;
+	private ReactApplicationContext reactContext;
 
 	public DocumentPickerModule(ReactApplicationContext reactContext) {
 		super(reactContext);
+		this.reactContext = reactContext;
 		reactContext.addActivityEventListener(activityEventListener);
 	}
 
@@ -179,17 +187,21 @@ public class DocumentPickerModule extends ReactContextBaseJavaModule {
 
 		map.putString(FIELD_URI, uri.toString());
 
+
+
 		ContentResolver contentResolver = getReactApplicationContext().getContentResolver();
 
 		map.putString(FIELD_TYPE, contentResolver.getType(uri));
 
 		Cursor cursor = contentResolver.query(uri, null, null, null, null, null);
 
+		String fileName = null;
 		try {
 			if (cursor != null && cursor.moveToFirst()) {
 				int displayNameIndex = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME);
 				if (!cursor.isNull(displayNameIndex)) {
-					map.putString(FIELD_NAME, cursor.getString(displayNameIndex));
+					fileName = cursor.getString(displayNameIndex);
+					map.putString(FIELD_NAME, fileName);
 				}
 
 				if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.KITKAT) {
@@ -210,6 +222,70 @@ public class DocumentPickerModule extends ReactContextBaseJavaModule {
 			}
 		}
 
+		String output = reactContext.getCacheDir().getAbsolutePath() + File.separator + System.currentTimeMillis() + "_" + fileName;
+		try {
+			this.copyFile(uri.toString(), output);
+			map.putString("OUTPUT_PATH", output);
+
+		} catch(Exception e) {
+			e.printStackTrace();
+		}
+
 		return map;
 	}
+
+	private void copyFile(String filepath, String destPath) throws IOException, IORejectionException {
+		InputStream in = getInputStream(filepath);
+		OutputStream out = getOutputStream(destPath, false);
+
+		byte[] buffer = new byte[1024];
+		int length;
+		while ((length = in.read(buffer)) > 0) {
+			out.write(buffer, 0, length);
+		}
+		in.close();
+		out.close();
+	}
+
+	private Uri getFileUri(String filepath) throws IORejectionException {
+		Uri uri = Uri.parse(filepath);
+		if (uri.getScheme() == null) {
+			// No prefix, assuming that provided path is absolute path to file
+			File file = new File(filepath);
+			if (file.isDirectory()) {
+				throw new IORejectionException("EISDIR", "EISDIR: illegal operation on a directory, read '" + filepath + "'");
+			}
+			uri = Uri.parse("file://" + filepath);
+		}
+		return uri;
+	}
+
+	private InputStream getInputStream(String filepath) throws IORejectionException {
+		Uri uri = getFileUri(filepath);
+		InputStream stream;
+		try {
+			stream = reactContext.getContentResolver().openInputStream(uri);
+		} catch (FileNotFoundException ex) {
+			throw new IORejectionException("ENOENT", "ENOENT: no such file or directory, open '" + filepath + "'");
+		}
+		if (stream == null) {
+			throw new IORejectionException("ENOENT", "ENOENT: could not open an input stream for '" + filepath + "'");
+		}
+		return stream;
+	}
+
+	private OutputStream getOutputStream(String filepath, boolean append) throws IORejectionException {
+		Uri uri = getFileUri(filepath);
+		OutputStream stream;
+		try {
+			stream = reactContext.getContentResolver().openOutputStream(uri, append ? "wa" : "w");
+		} catch (FileNotFoundException ex) {
+			throw new IORejectionException("ENOENT", "ENOENT: no such file or directory, open '" + filepath + "'");
+		}
+		if (stream == null) {
+			throw new IORejectionException("ENOENT", "ENOENT: could not open an output stream for '" + filepath + "'");
+		}
+		return stream;
+	}
+
 }
