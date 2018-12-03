@@ -30,6 +30,7 @@ import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.net.URLDecoder;
 
 /**
  * @see <a href="https://developer.android.com/guide/topics/providers/document-provider.html">android documentation</a>
@@ -60,7 +61,7 @@ public class DocumentPickerModule extends ReactContextBaseJavaModule {
 		public void onActivityResult(Activity activity, int requestCode, int resultCode, Intent data) {
 			if (requestCode == READ_REQUEST_CODE) {
 				if (promise != null) {
-					onShowActivityResult(resultCode, data, promise);
+					onShowActivityResult(activity, resultCode, data, promise);
 					promise = null;
 				}
 			}
@@ -146,7 +147,7 @@ public class DocumentPickerModule extends ReactContextBaseJavaModule {
 		}
 	}
 
-	public void onShowActivityResult(int resultCode, Intent data, Promise promise) {
+	public void onShowActivityResult(Activity activity, int resultCode, Intent data, Promise promise) {
 		if (resultCode == Activity.RESULT_CANCELED) {
 			promise.reject(E_DOCUMENT_PICKER_CANCELED, "User canceled document picker");
 		} else if (resultCode == Activity.RESULT_OK) {
@@ -162,14 +163,14 @@ public class DocumentPickerModule extends ReactContextBaseJavaModule {
 				WritableArray results = Arguments.createArray();
 
 				if (uri != null) {
-					WritableMap map = getMetadata(uri, promise);
+					WritableMap map = getMetadata(activity, uri, promise);
 					if(map == null) { return; }
 					results.pushMap(map);
 				} else if (clipData != null && clipData.getItemCount() > 0) {
 					final int length = clipData.getItemCount();
 					for (int i = 0; i < length; ++i) {
 						ClipData.Item item = clipData.getItemAt(i);
-						WritableMap map = getMetadata(item.getUri(), promise);
+						WritableMap map = getMetadata(activity, item.getUri(), promise);
 						if(map == null) { return; }
 						results.pushMap(map);
 					}
@@ -187,12 +188,10 @@ public class DocumentPickerModule extends ReactContextBaseJavaModule {
 		}
 	}
 
-	private WritableMap getMetadata(Uri uri, Promise promise) {
+	private WritableMap getMetadata(Activity activity, Uri uri, Promise promise) {
 		WritableMap map = Arguments.createMap();
 
-		map.putString(FIELD_URI, uri.toString());
-
-
+		//map.putString(FIELD_URI, uri.toString());
 
 		ContentResolver contentResolver = getReactApplicationContext().getContentResolver();
 
@@ -227,22 +226,40 @@ public class DocumentPickerModule extends ReactContextBaseJavaModule {
 			}
 		}
 
+		try {
+			String output = reactContext.getCacheDir().getAbsolutePath() + File.separator + System.currentTimeMillis() + "_" + fileName;
+			InputStream in = contentResolver.openInputStream(uri);
+			OutputStream out = getOutputStream(activity, output, false);
+			byte[] buffer = new byte[1024];
+			int length;
+			while ((length = in.read(buffer)) > 0) {
+				out.write(buffer, 0, length);
+			}
+			in.close();
+			out.close();
+			map.putString(FIELD_URI, "file://" + output);
+		} catch(Exception e) {
+			map.putString("error", e.getMessage());
+		}
+/*
 		String output = reactContext.getCacheDir().getAbsolutePath() + File.separator + System.currentTimeMillis() + "_" + fileName;
 		try {
-			this.copyFile(uri.toString(), output);
+			String afterDecode = URLDecoder.decode(uri.toString(), "UTF-8");
+			this.copyFile(activity, afterDecode, output);
 			map.putString("OUTPUT_PATH", output);
 
 		} catch(Exception e) {
-			promise.reject(E_FAILED_TO_COPY_FILE, e.getLocalizedMessage(), e);
-			return null;
+			map.putString("error", e.getMessage());
+			//promise.reject(E_FAILED_TO_COPY_FILE, e.getLocalizedMessage(), e);
+			//return null;
 		}
-
+*/
 		return map;
 	}
 
-	private void copyFile(String filepath, String destPath) throws IOException, IORejectionException {
-		InputStream in = getInputStream(filepath);
-		OutputStream out = getOutputStream(destPath, false);
+	private void copyFile(Activity activity, String filepath, String destPath) throws IOException, IORejectionException {
+		InputStream in = getInputStream(activity, filepath);
+		OutputStream out = getOutputStream(activity, destPath, false);
 
 		byte[] buffer = new byte[1024];
 		int length;
@@ -266,11 +283,11 @@ public class DocumentPickerModule extends ReactContextBaseJavaModule {
 		return uri;
 	}
 
-	private InputStream getInputStream(String filepath) throws IORejectionException {
+	private InputStream getInputStream(Activity activity, String filepath) throws IORejectionException {
 		Uri uri = getFileUri(filepath);
 		InputStream stream;
 		try {
-			stream = reactContext.getContentResolver().openInputStream(uri);
+			stream = activity.getContentResolver().openInputStream(uri);
 		} catch (FileNotFoundException ex) {
 			throw new IORejectionException("ENOENT", "ENOENT: no such file or directory, open '" + filepath + "'");
 		}
@@ -280,11 +297,11 @@ public class DocumentPickerModule extends ReactContextBaseJavaModule {
 		return stream;
 	}
 
-	private OutputStream getOutputStream(String filepath, boolean append) throws IORejectionException {
+	private OutputStream getOutputStream(Activity activity, String filepath, boolean append) throws IORejectionException {
 		Uri uri = getFileUri(filepath);
 		OutputStream stream;
 		try {
-			stream = reactContext.getContentResolver().openOutputStream(uri, append ? "wa" : "w");
+			stream = activity.getContentResolver().openOutputStream(uri, append ? "wa" : "w");
 		} catch (FileNotFoundException ex) {
 			throw new IORejectionException("ENOENT", "ENOENT: no such file or directory, open '" + filepath + "'");
 		}
